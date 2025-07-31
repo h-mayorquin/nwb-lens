@@ -1,0 +1,1 @@
+"""NWB Lens - Interactive terminal-based NWB file explorer."""
