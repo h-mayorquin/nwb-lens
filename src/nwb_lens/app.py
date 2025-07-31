@@ -22,38 +22,8 @@ class NWBLensApp(App):
     # Reactive attribute to share selected object between widgets
     selected_object = reactive(None)
     
-    CSS = """
-    #tree {
-        width: 50%;
-        border-right: solid $accent;
-    }
-    
-    #details {
-        width: 50%;
-        padding: 1;
-    }
-    
-    #object-info {
-        margin-bottom: 1;
-        border: solid $primary;
-        padding: 1;
-    }
-    
-    #details-scroll {
-        height: 70%;
-    }
-    
-    #object-details {
-        padding: 1;
-    }
-    
-    #inspector-results {
-        height: 20%;
-        border-top: solid $accent;
-        padding: 1;
-        overflow-y: auto;
-    }
-    """
+    # Load CSS from external file
+    CSS_PATH = Path(__file__).parent / "ui" / "basic.tcss"
     
     BINDINGS = [
         ("i", "run_inspector", "Run Inspector"),

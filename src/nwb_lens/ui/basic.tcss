@@ -1,0 +1,30 @@
+#tree {
+    width: 50%;
+    border-right: solid $accent;
+}
+
+#details {
+    width: 50%;
+    padding: 1;
+}
+
+#object-info {
+    margin-bottom: 1;
+    border: solid $primary;
+    padding: 1;
+}
+
+#details-scroll {
+    height: 70%;
+}
+
+#object-details {
+    padding: 1;
+}
+
+#inspector-results {
+    height: 20%;
+    border-top: solid $accent;
+    padding: 1;
+    overflow-y: auto;
+}
