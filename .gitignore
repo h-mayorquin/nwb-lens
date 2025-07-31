@@ -208,4 +208,6 @@ __marimo__/
 
 # NWB files (test data and temporary files)
 *.nwb
-
+CLAUDE.md
+create_complex_test_nwb.py
+example.json
