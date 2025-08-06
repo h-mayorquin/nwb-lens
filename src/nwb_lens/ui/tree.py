@@ -48,7 +48,31 @@ class NWBTree(Tree):
     
     def _json_to_object_info(self, json_obj: dict[str, Any], parent: NWBObjectInfo = None) -> NWBObjectInfo:
         """Convert JSON object to NWBObjectInfo recursively."""
-        # Create the object without children first
+        
+        # Create unified info structure combining fields, attributes, and data_info
+        unified_info = {}
+        
+        # Add fields
+        if "fields" in json_obj:
+            unified_info.update(json_obj["fields"])
+        
+        # Add attributes
+        if "attributes" in json_obj:
+            unified_info.update(json_obj["attributes"])
+        
+        # Add data info with descriptive names
+        if "data_info" in json_obj:
+            data_info = json_obj["data_info"]
+            if "shape" in data_info:
+                unified_info["shape"] = data_info["shape"]
+            if "dtype" in data_info:
+                unified_info["data_type"] = data_info["dtype"]
+            if "chunks" in data_info:
+                unified_info["chunks"] = data_info["chunks"]
+            if "hdf5_path" in data_info:
+                unified_info["hdf5_path"] = data_info["hdf5_path"]
+        
+        # Create the object with unified info
         obj_info = NWBObjectInfo(
             name=json_obj.get('name', ''),
             type=json_obj.get('type', ''),
@@ -56,6 +80,7 @@ class NWBTree(Tree):
             path=json_obj.get('path', ''),
             fields=json_obj.get('fields', {}),
             attributes=json_obj.get('attributes', {}),
+            info=unified_info,  # Add unified info for display
             children=[],  # Will populate below
             parent=parent
         )
@@ -71,6 +96,11 @@ class NWBTree(Tree):
             obj_info.attributes['has_inspection_issues'] = inspection.get('has_issues', False)
             obj_info.attributes['inspection_message_count'] = len(inspection.get('messages', []))
             
+            # Add inspection info to unified info as well
+            unified_info['inspection_messages'] = len(inspection.get('messages', []))
+            unified_info['inspection_has_issues'] = inspection.get('has_issues', False)
+            unified_info['inspection_summary'] = inspection.get('summary', {})
+            
             # Parse inspector messages
             for msg_data in inspection.get('messages', []):
                 msg = InspectorMessage(
@@ -83,6 +113,9 @@ class NWBTree(Tree):
                     location=json_obj.get('path', '')
                 )
                 obj_info.inspector_messages.append(msg)
+        
+        # Update the unified info in obj_info after all modifications
+        obj_info.info = unified_info
         
         # Convert children recursively
         if 'children' in json_obj:

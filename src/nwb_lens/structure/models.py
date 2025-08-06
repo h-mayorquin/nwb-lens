@@ -160,7 +160,8 @@ class NWBObjectInfo:
     path: str
     fields: dict[str, Any]
     attributes: dict[str, Any]
-    children: list['NWBObjectInfo']
+    info: dict[str, Any] = field(default_factory=dict)  # Unified info for display
+    children: list['NWBObjectInfo'] = field(default_factory=list)
     parent: Optional['NWBObjectInfo'] = None
     inspector_messages: List[InspectorMessage] = field(default_factory=list)
     

@@ -46,25 +46,13 @@ class AttributePanel(Widget):
         
         self.query_one("#object-info", Static).update(info_text)
         
-        # Build detailed information display
+        # Build detailed information display using unified info
         details_sections = []
         
-        # Data information (shape, dtype, chunks)
-        data_info = self._extract_data_info(selected_object)
-        if data_info:
-            details_sections.append(data_info)
-        
-        # Fields section
-        if selected_object.fields:
-            fields_text = "[bold]Fields:[/bold]\n"
-            for field_name, field_type in selected_object.fields.items():
-                fields_text += f"  • {field_name}: [dim]{field_type}[/dim]\n"
-            details_sections.append(fields_text.rstrip())
-        
-        # Attributes/Metadata section
-        metadata_text = self._format_metadata(selected_object)
-        if metadata_text:
-            details_sections.append(metadata_text)
+        # Format unified info
+        info_text = self._format_unified_info(selected_object)
+        if info_text:
+            details_sections.append(info_text)
         
         # Join all sections
         details_text = "\n\n".join(details_sections) if details_sections else "[dim]No additional details[/dim]"
@@ -167,6 +155,64 @@ class AttributePanel(Widget):
             data_sections.append(ts_text.rstrip())
         
         return "\n\n".join(data_sections) if data_sections else ""
+    
+    def _format_unified_info(self, obj_info: NWBObjectInfo) -> str:
+        """Format unified info combining fields, attributes, and data info."""
+        if not obj_info.info:
+            return ""
+        
+        # Organize info into categories
+        data_items = []
+        metadata_items = []
+        inspection_items = []
+        
+        # Priority order for display
+        data_keys = ['shape', 'data_type', 'chunks', 'hdf5_path']
+        metadata_keys = ['description', 'comments', 'unit', 'units', 'rate', 
+                        'sampling_rate', 'resolution', 'conversion', 'offset', 
+                        'starting_time', 'timestamps_shape']
+        inspection_keys = ['inspection_messages', 'inspection_has_issues']
+        
+        # Process data-related info
+        for key in data_keys:
+            if key in obj_info.info:
+                value = obj_info.info[key]
+                display_key = key.replace('_', ' ').title()
+                if key == 'data_type':
+                    display_key = 'Data Type'
+                elif key == 'hdf5_path':
+                    display_key = 'HDF5 Path'
+                    value = f"[dim]{value}[/dim]"
+                elif key == 'shape' and isinstance(value, list):
+                    value = f"{value}"
+                data_items.append(f"  • {display_key}: {value}")
+        
+        # Process metadata
+        for key in metadata_keys:
+            if key in obj_info.info:
+                value = obj_info.info[key]
+                display_key = key.replace('_', ' ').title()
+                if key == 'timestamps_shape':
+                    display_key = 'Timestamps Shape'
+                metadata_items.append(f"  • {display_key}: {value}")
+        
+        # Process remaining items not in priority lists
+        processed_keys = set(data_keys + metadata_keys + inspection_keys)
+        for key, value in obj_info.info.items():
+            if key not in processed_keys:
+                display_key = key.replace('_', ' ').title()
+                metadata_items.append(f"  • {display_key}: {value}")
+        
+        # Build sections
+        sections = []
+        
+        if data_items:
+            sections.append("[bold]Data:[/bold]\n" + "\n".join(data_items))
+        
+        if metadata_items:
+            sections.append("[bold]Info:[/bold]\n" + "\n".join(metadata_items))
+        
+        return "\n\n".join(sections)
     
     def _format_metadata(self, info: NWBObjectInfo) -> str:
         """Format metadata/attributes for display."""

@@ -47,6 +47,36 @@ class NWBStructureExtractor:
     def _build_from_json(self, json_obj: dict[str, Any], parent: Optional[NWBObjectInfo] = None) -> NWBObjectInfo:
         """Build NWBObjectInfo structure from JSON representation."""
         
+        # Create unified info structure combining fields, attributes, and data_info
+        unified_info = {}
+        
+        # Add fields
+        if "fields" in json_obj:
+            unified_info.update(json_obj["fields"])
+        
+        # Add attributes
+        if "attributes" in json_obj:
+            unified_info.update(json_obj["attributes"])
+        
+        # Add data info with descriptive names
+        if "data_info" in json_obj:
+            data_info = json_obj["data_info"]
+            if "shape" in data_info:
+                unified_info["shape"] = data_info["shape"]
+            if "dtype" in data_info:
+                unified_info["data_type"] = data_info["dtype"]
+            if "chunks" in data_info:
+                unified_info["chunks"] = data_info["chunks"]
+            if "hdf5_path" in data_info:
+                unified_info["hdf5_path"] = data_info["hdf5_path"]
+        
+        # Add inspection info if present
+        if "inspection" in json_obj:
+            inspection_data = json_obj["inspection"]
+            unified_info["inspection_messages"] = len(inspection_data.get("messages", []))
+            unified_info["inspection_has_issues"] = inspection_data.get("has_issues", False)
+            unified_info["inspection_summary"] = inspection_data.get("summary", {})
+        
         # Extract basic info
         obj_info = NWBObjectInfo(
             name=json_obj.get("name", "unknown"),
@@ -55,24 +85,10 @@ class NWBStructureExtractor:
             path=json_obj.get("path", "/"),
             fields=json_obj.get("fields", {}),
             attributes=json_obj.get("attributes", {}),
+            info=unified_info,  # Pass unified info directly to constructor
             children=[],
             parent=parent
         )
-        
-        # Add data info to attributes if present
-        if "data_info" in json_obj:
-            obj_info.attributes.update({
-                f"data_{k}": v for k, v in json_obj["data_info"].items()
-            })
-        
-        # Add inspection info to attributes if present
-        if "inspection" in json_obj:
-            inspection_data = json_obj["inspection"]
-            obj_info.attributes.update({
-                "inspection_messages": len(inspection_data.get("messages", [])),
-                "inspection_has_issues": inspection_data.get("has_issues", False),
-                "inspection_summary": inspection_data.get("summary", {})
-            })
         
         # Recursively build children
         if "children" in json_obj:
