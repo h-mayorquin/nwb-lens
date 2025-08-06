@@ -19,7 +19,10 @@ class AttributePanel(Widget):
                 Static("", id="object-details", markup=True),
                 id="details-scroll"
             ),
-            Static("", id="inspector-results", markup=True),
+            ScrollableContainer(
+                Static("", id="inspector-results", markup=True),
+                id="inspector-scroll"
+            ),
         )
     
     def on_mount(self) -> None:
@@ -84,20 +87,20 @@ class AttributePanel(Widget):
         for importance in priority_order:
             if importance in messages_by_importance:
                 messages = messages_by_importance[importance]
-                icon = messages[0].get_icon()
+                text_indicator = messages[0].get_text_indicator()
                 
                 # Format importance name nicely
                 display_importance = importance.replace('_', ' ').title()
                 
-                # Color based on severity
+                # Color based on severity - different shades of red with more intense for worse problems
                 if importance in ["ERROR", "PYNWB_VALIDATION", "CRITICAL"]:
-                    color = "red"
+                    color = "red1"  # Most intense red for critical errors
                 elif importance == "BEST_PRACTICE_VIOLATION":
-                    color = "yellow"
+                    color = "red3"  # Medium red for violations
                 else:
-                    color = "cyan"
+                    color = "orange_red1"  # Lighter red-orange for suggestions
                 
-                results_sections.append(f"\n[{color}]{icon} {display_importance}:[/{color}]")
+                results_sections.append(f"\n[{color}]{text_indicator}: {display_importance}:[/{color}]")
                 for msg in messages:
                     # Truncate long messages
                     message_text = msg.message

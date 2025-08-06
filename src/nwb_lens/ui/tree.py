@@ -160,13 +160,14 @@ class NWBTree(Tree):
             
             # Check if this is a virtual/missing node
             if child.attributes.get('is_virtual', False):
-                # Add visual indicator for missing elements
-                display_name = f"❌ {display_name} (missing)"
+                # Add text indicator for missing elements with intense red coloring
+                display_name = f"[red1]MISSING: {display_name}[/red1]"
             elif child.has_inspector_issues():
-                # Add inspector icon summary
-                icon_summary = child.get_inspector_icon()
-                if icon_summary:
-                    display_name = f"{icon_summary} {display_name}"
+                # Add text indicators based on severity with different shades of red
+                text_summary = self._get_inspector_text_summary(child)
+                if text_summary:
+                    color = self._get_severity_color(child.get_worst_severity())
+                    display_name = f"[{color}]{text_summary}[/{color}] {display_name}"
             
             child_node = parent_node.add(display_name)
             self.structure_map[child_node] = child
@@ -204,34 +205,91 @@ class NWBTree(Tree):
                 continue
                 
             if obj_info.path in problems_by_path:
-                # Add problem indicator to node label
+                # Add text indicator to node label with appropriate red shade
                 problems = problems_by_path[obj_info.path]
-                worst_severity = self._get_worst_severity(problems)
-                icon = self._get_severity_icon(worst_severity)
+                text_indicator = self._get_problem_text_indicator(problems)
+                color = self._get_problem_severity_color(problems)
                 
-                # Update node label with icon
+                # Update node label with colored text indicator
                 original_label = obj_info.get_display_name()
-                node.set_label(f"{icon} {original_label}")
+                node.set_label(f"[{color}]{text_indicator}[/{color}] {original_label}")
     
-    def _get_worst_severity(self, problems: list[dict]) -> str:
-        """Get the worst severity from a list of problems."""
+    def _get_inspector_text_summary(self, obj_info: NWBObjectInfo) -> str:
+        """Get text summary of inspector issues for an object."""
+        if not obj_info.inspector_messages:
+            return ""
+        
+        summary = {}
+        for msg in obj_info.inspector_messages:
+            summary[msg.importance] = summary.get(msg.importance, 0) + 1
+        
+        # Priority order for displaying issues
+        priority_order = ["ERROR", "PYNWB_VALIDATION", "CRITICAL", 
+                         "BEST_PRACTICE_VIOLATION", "BEST_PRACTICE_SUGGESTION"]
+        
+        parts = []
+        for importance in priority_order:
+            if importance in summary:
+                count = summary[importance]
+                text = self._get_importance_text(importance)
+                if count > 1:
+                    parts.append(f"{text}({count})")
+                else:
+                    parts.append(text)
+        
+        return " ".join(parts) if parts else ""
+    
+    def _get_problem_text_indicator(self, problems: list[dict]) -> str:
+        """Get text indicator for problem severity from problems list."""
+        summary = {}
+        for problem in problems:
+            importance = problem.get('importance', 'UNKNOWN')
+            summary[importance] = summary.get(importance, 0) + 1
+        
+        priority_order = ["ERROR", "PYNWB_VALIDATION", "CRITICAL", 
+                         "BEST_PRACTICE_VIOLATION", "BEST_PRACTICE_SUGGESTION"]
+        
+        parts = []
+        for importance in priority_order:
+            if importance in summary:
+                count = summary[importance]
+                text = self._get_importance_text(importance)
+                if count > 1:
+                    parts.append(f"{text}({count})")
+                else:
+                    parts.append(text)
+        
+        return " ".join(parts) if parts else "ISSUES"
+    
+    def _get_importance_text(self, importance: str) -> str:
+        """Get text indicator for problem importance level."""
+        text_indicators = {
+            'CRITICAL': 'CRITICAL',
+            'ERROR': 'ERROR',   
+            'PYNWB_VALIDATION': 'VALIDATION',
+            'WARNING': 'WARNING',
+            'BEST_PRACTICE_VIOLATION': 'VIOLATION',
+            'INFO': 'INFO',
+            'SUGGESTION': 'SUGGESTION',
+            'BEST_PRACTICE_SUGGESTION': 'SUGGESTION',
+        }
+        return text_indicators.get(importance, 'ISSUE')
+    
+    def _get_severity_color(self, severity: str) -> str:
+        """Get color for severity level - different shades of red with more intense for worse problems."""
+        if severity in ["ERROR", "PYNWB_VALIDATION", "CRITICAL"]:
+            return "red1"  # Most intense red for critical errors
+        elif severity == "BEST_PRACTICE_VIOLATION":
+            return "red3"  # Medium red for violations
+        else:
+            return "orange_red1"  # Lighter red-orange for suggestions
+    
+    def _get_problem_severity_color(self, problems: list[dict]) -> str:
+        """Get color for problem severity from problems list."""
+        # Find the worst severity
         severity_order = ['ERROR', 'PYNWB_VALIDATION', 'CRITICAL', 'BEST_PRACTICE_VIOLATION', 'BEST_PRACTICE_SUGGESTION']
         for severity in severity_order:
-            if any(p['severity'] == severity for p in problems):
-                return severity
-        return 'BEST_PRACTICE_SUGGESTION'
-    
-    def _get_severity_icon(self, severity: str) -> str:
-        """Get visual indicator for problem severity."""
-        icons = {
-            'CRITICAL': '❌',
-            'ERROR': '❌',   
-            'PYNWB_VALIDATION': '❌',
-            'WARNING': '⚠️',
-            'BEST_PRACTICE_VIOLATION': '⚠️',
-            'INFO': '💡',
-            'SUGGESTION': '💡',
-            'BEST_PRACTICE_SUGGESTION': '💡',
-        }
-        return icons.get(severity, '❓')
+            if any(p.get('importance', '') == severity for p in problems):
+                return self._get_severity_color(severity)
+        return "orange_red1"  # Default to lightest red-orange
     

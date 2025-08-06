@@ -35,16 +35,19 @@ class InspectorMessage:
     file_path: Optional[str] = None
     location: Optional[str] = None
     
-    def get_icon(self) -> str:
-        """Get the icon for this message based on importance."""
-        if self.importance in ["ERROR", "PYNWB_VALIDATION", "CRITICAL"]:
-            return "❌"
-        elif self.importance == "BEST_PRACTICE_VIOLATION":
-            return "⚠️"
-        elif self.importance == "BEST_PRACTICE_SUGGESTION":
-            return "💡"
-        else:
-            return "❓"
+    def get_text_indicator(self) -> str:
+        """Get the text indicator for this message based on importance."""
+        text_indicators = {
+            'CRITICAL': 'CRITICAL',
+            'ERROR': 'ERROR',   
+            'PYNWB_VALIDATION': 'VALIDATION',
+            'WARNING': 'WARNING',
+            'BEST_PRACTICE_VIOLATION': 'VIOLATION',
+            'INFO': 'INFO',
+            'SUGGESTION': 'SUGGESTION',
+            'BEST_PRACTICE_SUGGESTION': 'SUGGESTION',
+        }
+        return text_indicators.get(self.importance, 'ISSUE')
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'InspectorMessage':
@@ -95,11 +98,11 @@ class InspectorResults:
             summary[msg.importance] = summary.get(msg.importance, 0) + 1
         return summary
     
-    def get_icon_summary_for_location(self, location: str) -> str:
-        """Get a formatted icon summary for display."""
+    def get_text_summary_for_location(self, location: str) -> str:
+        """Get a formatted text summary for display."""
         summary = self.get_summary_for_location(location)
         if not summary:
-            return "✅"
+            return "OK"
         
         priority_order = ["ERROR", "PYNWB_VALIDATION", "CRITICAL", 
                          "BEST_PRACTICE_VIOLATION", "BEST_PRACTICE_SUGGESTION"]
@@ -108,18 +111,27 @@ class InspectorResults:
         for importance in priority_order:
             if importance in summary:
                 count = summary[importance]
-                # Get icon based on importance
-                if importance in ["ERROR", "PYNWB_VALIDATION", "CRITICAL"]:
-                    icon = "❌"
-                elif importance == "BEST_PRACTICE_VIOLATION":
-                    icon = "⚠️"
-                elif importance == "BEST_PRACTICE_SUGGESTION":
-                    icon = "💡"
+                text = self._get_importance_text(importance)
+                if count > 1:
+                    parts.append(f"{text}({count})")
                 else:
-                    icon = "❓"
-                parts.append(f"{icon}{count}")
+                    parts.append(text)
         
-        return " ".join(parts) if parts else "✅"
+        return " ".join(parts) if parts else "OK"
+    
+    def _get_importance_text(self, importance: str) -> str:
+        """Get text indicator for problem importance level."""
+        text_indicators = {
+            'CRITICAL': 'CRITICAL',
+            'ERROR': 'ERROR',   
+            'PYNWB_VALIDATION': 'VALIDATION',
+            'WARNING': 'WARNING',
+            'BEST_PRACTICE_VIOLATION': 'VIOLATION',
+            'INFO': 'INFO',
+            'SUGGESTION': 'SUGGESTION',
+            'BEST_PRACTICE_SUGGESTION': 'SUGGESTION',
+        }
+        return text_indicators.get(importance, 'ISSUE')
     
     @classmethod
     def from_json(cls, data: Dict[str, Any]) -> 'InspectorResults':
@@ -191,8 +203,8 @@ class NWBObjectInfo:
                 return child
         return None
     
-    def get_inspector_icon(self) -> str:
-        """Get inspector icon summary for this object."""
+    def get_inspector_text_summary(self) -> str:
+        """Get inspector text summary for this object."""
         if not self.inspector_messages:
             return ""
         
@@ -207,17 +219,27 @@ class NWBObjectInfo:
         for importance in priority_order:
             if importance in summary:
                 count = summary[importance]
-                if importance in ["ERROR", "PYNWB_VALIDATION", "CRITICAL"]:
-                    icon = "❌"
-                elif importance == "BEST_PRACTICE_VIOLATION":
-                    icon = "⚠️"
-                elif importance == "BEST_PRACTICE_SUGGESTION":
-                    icon = "💡"
+                text = self._get_importance_text(importance)
+                if count > 1:
+                    parts.append(f"{text}({count})")
                 else:
-                    icon = "❓"
-                parts.append(f"{icon}{count}")
+                    parts.append(text)
         
         return " ".join(parts) if parts else ""
+    
+    def _get_importance_text(self, importance: str) -> str:
+        """Get text indicator for problem importance level."""
+        text_indicators = {
+            'CRITICAL': 'CRITICAL',
+            'ERROR': 'ERROR',   
+            'PYNWB_VALIDATION': 'VALIDATION',
+            'WARNING': 'WARNING',
+            'BEST_PRACTICE_VIOLATION': 'VIOLATION',
+            'INFO': 'INFO',
+            'SUGGESTION': 'SUGGESTION',
+            'BEST_PRACTICE_SUGGESTION': 'SUGGESTION',
+        }
+        return text_indicators.get(importance, 'ISSUE')
     
     def has_inspector_issues(self) -> bool:
         """Check if this object has any inspector issues."""
@@ -263,7 +285,7 @@ class NWBObjectInfo:
                     for msg in self.inspector_messages
                 ],
                 "has_issues": True,
-                "summary": self.get_inspector_icon()
+                "summary": self.get_inspector_text_summary()
             }
         
         return result
