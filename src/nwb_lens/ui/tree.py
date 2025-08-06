@@ -1,12 +1,12 @@
 """Tree widget for displaying NWB structure."""
 
-from typing import Any
+from typing import Any, Dict, List
 
 from textual.widgets import Tree
 from textual.message import Message
 from textual import log
 
-from ..structure.models import NWBObjectInfo
+from ..structure.models import NWBObjectInfo, InspectorMessage
 
 
 class NWBTree(Tree):
@@ -60,6 +60,30 @@ class NWBTree(Tree):
             parent=parent
         )
         
+        # Mark if this is a virtual/missing node
+        if json_obj.get('virtual', False):
+            obj_info.attributes['is_virtual'] = True
+            obj_info.attributes['virtual_reason'] = 'missing'
+        
+        # Store inspection data if present
+        if 'inspection' in json_obj:
+            inspection = json_obj['inspection']
+            obj_info.attributes['has_inspection_issues'] = inspection.get('has_issues', False)
+            obj_info.attributes['inspection_message_count'] = len(inspection.get('messages', []))
+            
+            # Parse inspector messages
+            for msg_data in inspection.get('messages', []):
+                msg = InspectorMessage(
+                    message=msg_data.get('message', ''),
+                    importance=msg_data.get('importance', 'UNKNOWN'),
+                    importance_level=msg_data.get('importance_level', 0),
+                    severity=msg_data.get('severity', 'LOW'),
+                    severity_level=msg_data.get('severity_level', 0),
+                    check_function=msg_data.get('check_function', ''),
+                    location=json_obj.get('path', '')
+                )
+                obj_info.inspector_messages.append(msg)
+        
         # Convert children recursively
         if 'children' in json_obj:
             for child_json in json_obj['children']:
@@ -72,6 +96,17 @@ class NWBTree(Tree):
         """Recursively add children to a tree node."""
         for child in children:
             display_name = child.get_display_name()
+            
+            # Check if this is a virtual/missing node
+            if child.attributes.get('is_virtual', False):
+                # Add visual indicator for missing elements
+                display_name = f"❌ {display_name} (missing)"
+            elif child.has_inspector_issues():
+                # Add inspector icon summary
+                icon_summary = child.get_inspector_icon()
+                if icon_summary:
+                    display_name = f"{icon_summary} {display_name}"
+            
             child_node = parent_node.add(display_name)
             self.structure_map[child_node] = child
             
@@ -103,6 +138,10 @@ class NWBTree(Tree):
         
         # Update all nodes to show problem indicators
         for node, obj_info in self.structure_map.items():
+            # Skip virtual nodes - they already have their indicator
+            if obj_info.attributes.get('is_virtual', False):
+                continue
+                
             if obj_info.path in problems_by_path:
                 # Add problem indicator to node label
                 problems = problems_by_path[obj_info.path]
@@ -115,20 +154,23 @@ class NWBTree(Tree):
     
     def _get_worst_severity(self, problems: list[dict]) -> str:
         """Get the worst severity from a list of problems."""
-        severity_order = ['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'SUGGESTION']
+        severity_order = ['ERROR', 'PYNWB_VALIDATION', 'CRITICAL', 'BEST_PRACTICE_VIOLATION', 'BEST_PRACTICE_SUGGESTION']
         for severity in severity_order:
             if any(p['severity'] == severity for p in problems):
                 return severity
-        return 'INFO'
+        return 'BEST_PRACTICE_SUGGESTION'
     
     def _get_severity_icon(self, severity: str) -> str:
         """Get visual indicator for problem severity."""
         icons = {
-            'CRITICAL': 'X',
-            'ERROR': 'X',   
-            'WARNING': '!',
-            'INFO': 'i',
-            'SUGGESTION': '?',
+            'CRITICAL': '❌',
+            'ERROR': '❌',   
+            'PYNWB_VALIDATION': '❌',
+            'WARNING': '⚠️',
+            'BEST_PRACTICE_VIOLATION': '⚠️',
+            'INFO': '💡',
+            'SUGGESTION': '💡',
+            'BEST_PRACTICE_SUGGESTION': '💡',
         }
-        return icons.get(severity, '?')
+        return icons.get(severity, '❓')
     

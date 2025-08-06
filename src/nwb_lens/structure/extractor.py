@@ -30,12 +30,19 @@ class NWBStructureExtractor:
         except Exception as e:
             raise RuntimeError(f"Failed to extract NWB file to JSON: {e}")
     
-    def extract_file_structure(self) -> NWBObjectInfo:
-        """Extract the complete file structure from JSON."""
-        if self.json_structure is None:
-            raise RuntimeError("No file loaded. Call load_file() first.")
+    def extract_file_structure(self, structure_data: Optional[dict[str, Any]] = None) -> NWBObjectInfo:
+        """
+        Extract the complete file structure from JSON.
         
-        return self._build_from_json(self.json_structure["structure"])
+        Args:
+            structure_data: Optional structure data to use instead of loaded data
+        """
+        if structure_data is None:
+            if self.json_structure is None:
+                raise RuntimeError("No file loaded. Call load_file() first.")
+            structure_data = self.json_structure
+        
+        return self._build_from_json(structure_data["structure"])
     
     def _build_from_json(self, json_obj: dict[str, Any], parent: Optional[NWBObjectInfo] = None) -> NWBObjectInfo:
         """Build NWBObjectInfo structure from JSON representation."""
@@ -58,6 +65,15 @@ class NWBStructureExtractor:
                 f"data_{k}": v for k, v in json_obj["data_info"].items()
             })
         
+        # Add inspection info to attributes if present
+        if "inspection" in json_obj:
+            inspection_data = json_obj["inspection"]
+            obj_info.attributes.update({
+                "inspection_messages": len(inspection_data.get("messages", [])),
+                "inspection_has_issues": inspection_data.get("has_issues", False),
+                "inspection_summary": inspection_data.get("summary", {})
+            })
+        
         # Recursively build children
         if "children" in json_obj:
             for child_json in json_obj["children"]:
@@ -75,6 +91,15 @@ class NWBStructureExtractor:
     def get_json_structure(self) -> Optional[dict[str, Any]]:
         """Get the raw JSON structure for export or debugging."""
         return self.json_structure
+    
+    def export_json(self, output_path: Path) -> None:
+        """Export the structure data to JSON file."""
+        if not self.json_structure:
+            raise RuntimeError("No data loaded to export")
+        
+        with open(output_path, 'w') as f:
+            import json
+            json.dump(self.json_structure, f, indent=2)
     
     # Future extension point: Could add methods like:
     # def reload_file(self) -> None: ...

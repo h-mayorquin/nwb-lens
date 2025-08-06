@@ -70,6 +70,16 @@ class NWBLensApp(App):
             tree = self.query_one("#tree", NWBTree)
             tree.populate_from_json(self.json_data['structure'])
             
+            # Check if inspection data is already in the JSON
+            if "merge_info" in self.json_data and self.json_data["merge_info"].get("inspection_available", False):
+                # Extract and apply inspection results from JSON
+                self._extract_inspection_from_json()
+                tree.update_with_problems(self.inspector.problems_by_path)
+                
+                total_messages = self.json_data["merge_info"].get("total_messages", 0)
+                if total_messages > 0:
+                    self.notify(f"Loaded {total_messages} inspection messages", severity="information")
+            
             log(f"App initialized successfully")
             log(f"Structure loaded from JSON")
             
@@ -85,27 +95,66 @@ class NWBLensApp(App):
             traceback.print_exc()
             print(f"{'='*60}\n")
         
-        if self.run_inspector:
-            self.action_run_inspector()
+        # Note: run_inspector flag is now handled differently
+        # Inspection should be done during file loading with --inspect flag
     
     def action_run_inspector(self) -> None:
-        """Run nwbinspector on the current file."""
+        """Display inspector results if available in the JSON data."""
+        # Check if inspection data is already in the loaded JSON
+        if self.json_data and "merge_info" in self.json_data:
+            merge_info = self.json_data.get("merge_info", {})
+            if merge_info.get("inspection_available", False):
+                total_messages = merge_info.get("total_messages", 0)
+                
+                # Extract inspection results from the JSON structure
+                self._extract_inspection_from_json()
+                
+                # Update tree with problem indicators
+                tree = self.query_one("#tree", NWBTree)
+                tree.update_with_problems(self.inspector.problems_by_path)
+                
+                self.notify(f"Inspector found {total_messages} issues", severity="information")
+                return
+        
+        # If no inspection data in JSON, check if inspector is available for live run
         if not self.inspector.is_available():
-            self.notify("nwbinspector not available. Install with: uv add --optional inspector", severity="warning")
+            self.notify("nwbinspector not available. Re-run with --inspect flag or install with: uv add nwbinspector", severity="warning")
             return
         
-        try:
-            self.notify("Running nwbinspector...", timeout=1)
-            self.inspector_results = self.inspector.run_inspector(self.original_nwb_path)
+        # For now, inform user to re-run with inspection
+        self.notify("No inspection data found. Re-run nwb-lens with --inspect flag", severity="warning")
+    
+    def _extract_inspection_from_json(self) -> None:
+        """Extract inspection results from the loaded JSON structure."""
+        self.inspector.problems_by_path = {}
+        
+        def extract_from_node(node, path=""):
+            """Recursively extract inspection data from JSON nodes."""
+            if "inspection" in node:
+                inspection = node["inspection"]
+                if inspection.get("has_issues", False):
+                    messages = inspection.get("messages", [])
+                    # Convert to the format expected by the tree
+                    problems = []
+                    for msg in messages:
+                        problems.append({
+                            'path': path,
+                            'severity': msg.get('importance', 'UNKNOWN'),
+                            'message': msg.get('message', ''),
+                            'check_name': msg.get('check_function', ''),
+                        })
+                    if problems:
+                        self.inspector.problems_by_path[path] = problems
             
-            # Update tree with problem indicators
-            tree = self.query_one("#tree", NWBTree)
-            tree.update_with_problems(self.inspector.problems_by_path)
-            
-            self.notify(f"Inspector found {len(self.inspector_results)} issues")
-            
-        except Exception as e:
-            self.notify(f"Inspector failed: {e}", severity="error")
+            # Process children
+            if "children" in node:
+                for child in node["children"]:
+                    child_path = child.get("path", path)
+                    extract_from_node(child, child_path)
+        
+        # Start extraction from the root structure
+        if "structure" in self.json_data:
+            extract_from_node(self.json_data["structure"])
     
     def action_export_output(self) -> None:
         """Export current structure to JSON."""

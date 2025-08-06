@@ -5,7 +5,7 @@ from textual.widgets import Static
 from textual.widget import Widget
 from textual import log
 
-from ..structure.models import NWBObjectInfo
+from ..structure.models import NWBObjectInfo, InspectorMessage
 
 
 class AttributePanel(Widget):
@@ -69,9 +69,62 @@ class AttributePanel(Widget):
         # Join all sections
         details_text = "\n\n".join(details_sections) if details_sections else "[dim]No additional details[/dim]"
         self.query_one("#object-details", Static).update(details_text)
+        
+        # Update inspector results if available
+        self._update_inspector_results(selected_object)
+    
+    def _update_inspector_results(self, selected_object: NWBObjectInfo) -> None:
+        """Update the inspector results section for the selected object."""
+        if not selected_object.inspector_messages:
+            self.query_one("#inspector-results", Static).update("")
+            return
+        
+        # Group messages by importance
+        messages_by_importance = {}
+        for msg in selected_object.inspector_messages:
+            if msg.importance not in messages_by_importance:
+                messages_by_importance[msg.importance] = []
+            messages_by_importance[msg.importance].append(msg)
+        
+        # Build display text
+        results_sections = []
+        results_sections.append("[bold]Inspector Results:[/bold]")
+        
+        # Show in priority order
+        priority_order = ["ERROR", "PYNWB_VALIDATION", "CRITICAL", 
+                         "BEST_PRACTICE_VIOLATION", "BEST_PRACTICE_SUGGESTION"]
+        
+        for importance in priority_order:
+            if importance in messages_by_importance:
+                messages = messages_by_importance[importance]
+                icon = messages[0].get_icon()
+                
+                # Format importance name nicely
+                display_importance = importance.replace('_', ' ').title()
+                
+                # Color based on severity
+                if importance in ["ERROR", "PYNWB_VALIDATION", "CRITICAL"]:
+                    color = "red"
+                elif importance == "BEST_PRACTICE_VIOLATION":
+                    color = "yellow"
+                else:
+                    color = "cyan"
+                
+                results_sections.append(f"\n[{color}]{icon} {display_importance}:[/{color}]")
+                for msg in messages:
+                    # Truncate long messages
+                    message_text = msg.message
+                    if len(message_text) > 120:
+                        message_text = message_text[:117] + "..."
+                    results_sections.append(f"  • {message_text}")
+                    if msg.check_function:
+                        results_sections.append(f"    [dim]Check: {msg.check_function}[/dim]")
+        
+        results_text = "\n".join(results_sections)
+        self.query_one("#inspector-results", Static).update(results_text)
     
     def update_inspector_results(self, results: list) -> None:
-        """Update the inspector results section."""
+        """Update the inspector results section (legacy method)."""
         if not results:
             self.query_one("#inspector-results", Static).update("")
             return
@@ -119,37 +172,75 @@ class AttributePanel(Widget):
         """Format metadata/attributes for display."""
         # Skip data-related attributes as they're shown separately
         skip_attrs = {'data_shape', 'data_dtype', 'data_chunks', 'data_hdf5_path', 
-                     'timestamps_shape', 'has_timestamps'}
+                     'timestamps_shape', 'has_timestamps', 'has_inspection_issues', 
+                     'inspection_message_count', 'is_virtual', 'virtual_reason'}
         
         # Common important attributes to show first
         priority_attrs = ['description', 'comments', 'unit', 'units', 'rate', 
                          'sampling_rate', 'resolution', 'conversion', 'offset']
         
         metadata_items = []
+        missing_fields = []
         
-        # Show priority attributes first
+        # Check for missing fields based on inspector messages
+        for msg in info.inspector_messages:
+            msg_lower = msg.message.lower()
+            if "description is missing" in msg_lower:
+                missing_fields.append('description')
+            elif "description" in msg_lower and "placeholder" in msg_lower:
+                # Description exists but is a placeholder
+                if 'description' not in info.attributes or not info.attributes.get('description'):
+                    missing_fields.append('description')
+        
+        # Show priority attributes first (including missing ones)
         for attr in priority_attrs:
-            if attr in info.attributes and attr not in skip_attrs:
+            if attr in missing_fields and attr not in info.attributes:
+                # Highlight missing required field
+                display_key = attr.replace('_', ' ').title()
+                metadata_items.append((attr, None, True))  # True = missing
+            elif attr in info.attributes and attr not in skip_attrs:
                 value = info.attributes[attr]
+                # Check if it's a placeholder
+                is_placeholder = False
+                if attr == 'description' and value:
+                    value_lower = str(value).lower()
+                    if 'no description' in value_lower or value_lower == 'description':
+                        is_placeholder = True
+                
                 if value and str(value).strip():
-                    metadata_items.append((attr, value))
+                    metadata_items.append((attr, value, is_placeholder))
         
         # Show remaining attributes
         for key, value in info.attributes.items():
             if key not in skip_attrs and key not in priority_attrs:
                 if value and str(value).strip():
-                    metadata_items.append((key, value))
+                    metadata_items.append((key, value, False))
         
-        if not metadata_items:
+        # Add missing description if detected and not in attributes
+        if 'description' in missing_fields and not any(item[0] == 'description' for item in metadata_items):
+            metadata_items.insert(0, ('description', None, True))
+        
+        if not metadata_items and not missing_fields:
             return ""
         
         metadata_text = "[bold]Metadata:[/bold]\n"
-        for key, value in metadata_items:
+        for item in metadata_items:
+            if len(item) == 3:
+                key, value, is_special = item
+            else:
+                key, value = item
+                is_special = False
+            
             # Format key nicely
             display_key = key.replace('_', ' ').title()
             
-            # Format value based on type
-            if isinstance(value, (int, float)):
+            # Handle missing fields
+            if value is None:
+                metadata_text += f"  • {display_key}: [red bold]⚠️ MISSING[/red bold]\n"
+            elif is_special:
+                # Placeholder value
+                metadata_text += f"  • {display_key}: [yellow]{value} ⚠️[/yellow]\n"
+            elif isinstance(value, (int, float)):
                 if key in ['rate', 'sampling_rate'] and value > 0:
                     metadata_text += f"  • {display_key}: [green]{value:g} Hz[/green]\n"
                 elif key == 'conversion':
