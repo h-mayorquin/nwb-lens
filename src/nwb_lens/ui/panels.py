@@ -39,10 +39,9 @@ class AttributePanel(Widget):
         log(f"Object path: {selected_object.path}")
         log("=" * 60)
         
-        # Update object info section
+        # Update object info section (removed class as requested)
         info_text = f"""[bold]Selected:[/bold] {selected_object.path}
-[bold]Type:[/bold] {selected_object.type}
-[bold]Class:[/bold] {selected_object.class_name}"""
+[bold]Type:[/bold] {selected_object.type}"""
         
         self.query_one("#object-info", Static).update(info_text)
         
@@ -167,7 +166,8 @@ class AttributePanel(Widget):
         inspection_items = []
         
         # Priority order for display
-        data_keys = ['shape', 'data_type', 'chunks', 'hdf5_path']
+        data_keys = ['shape', 'data_type', 'chunks', 'compression', 'compression_opts', 
+                    'original_size', 'compressed_size', 'compression_ratio', 'hdf5_path']
         metadata_keys = ['description', 'comments', 'unit', 'units', 'rate', 
                         'sampling_rate', 'resolution', 'conversion', 'offset', 
                         'starting_time', 'timestamps_shape']
@@ -183,6 +183,15 @@ class AttributePanel(Widget):
                 elif key == 'hdf5_path':
                     display_key = 'HDF5 Path'
                     value = f"[dim]{value}[/dim]"
+                elif key == 'compression_opts':
+                    display_key = 'Compression Options'
+                elif key == 'compression_ratio':
+                    display_key = 'Compression Ratio'
+                    value = f"{value}:1" if isinstance(value, (int, float)) else value
+                elif key == 'original_size':
+                    display_key = 'Original Size'
+                elif key == 'compressed_size':
+                    display_key = 'Compressed Size'
                 elif key == 'shape' and isinstance(value, list):
                     value = f"{value}"
                 data_items.append(f"  • {display_key}: {value}")
@@ -196,12 +205,18 @@ class AttributePanel(Widget):
                     display_key = 'Timestamps Shape'
                 metadata_items.append(f"  • {display_key}: {value}")
         
-        # Process remaining items not in priority lists
+        # Process remaining items not in priority lists (sorted alphabetically)
         processed_keys = set(data_keys + metadata_keys + inspection_keys)
+        remaining_items = []
         for key, value in obj_info.info.items():
             if key not in processed_keys:
                 display_key = key.replace('_', ' ').title()
-                metadata_items.append(f"  • {display_key}: {value}")
+                remaining_items.append((display_key, value))
+        
+        # Sort alphabetically by display key
+        remaining_items.sort(key=lambda x: x[0])
+        for display_key, value in remaining_items:
+            metadata_items.append(f"  • {display_key}: {value}")
         
         # Build sections
         sections = []

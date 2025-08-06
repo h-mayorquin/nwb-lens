@@ -160,7 +160,39 @@ class NWBJSONConverter:
         elif isinstance(value, dict):
             return f"dict[{len(value)} keys]"
         elif hasattr(value, 'name'):
-            return f"{type(value).__name__}: {value.name}"
+            # Check if this is a reference to another object with a path
+            value_type = type(value).__name__
+            
+            # Handle different types of references
+            if hasattr(value, 'object') and hasattr(value.object, 'name'):
+                # For references like imaging planes, electrodes, etc.
+                ref_name = value.object.name
+                ref_type = type(value.object).__name__
+                
+                # Try to determine the path based on object type and name
+                if ref_type == 'ImagingPlane':
+                    return f"{ref_type}: /imaging_planes/{ref_name}"
+                elif ref_type == 'Device':
+                    return f"{ref_type}: /devices/{ref_name}"
+                elif ref_type == 'ElectrodeGroup':
+                    return f"{ref_type}: /electrode_groups/{ref_name}"
+                elif 'table' in value_type.lower():
+                    # For table references like electrodes
+                    if 'electrode' in ref_name.lower():
+                        return f"{ref_type}: /electrodes"
+                    else:
+                        return f"{ref_type}: /{ref_name}"
+                else:
+                    return f"{ref_type}: {ref_name}"
+            elif hasattr(value, 'table') and hasattr(value.table, 'name'):
+                # Handle DynamicTableRegion references
+                table_name = value.table.name
+                if 'electrode' in table_name.lower():
+                    return f"{value_type}: /electrodes"
+                else:
+                    return f"{value_type}: /{table_name}"
+            else:
+                return f"{value_type}: {value.name}"
         else:
             return type(value).__name__
     
@@ -209,6 +241,40 @@ class NWBJSONConverter:
             # Get chunking info for HDF5 datasets
             if hasattr(data, 'chunks'):
                 data_info['chunks'] = data.chunks
+            
+            # Add compression information (following HDMF approach)
+            # Check if it's an HDF5 dataset
+            try:
+                import h5py
+                if isinstance(data, h5py.Dataset):
+                    # Get compression info
+                    if hasattr(data, 'compression') and data.compression is not None:
+                        data_info['compression'] = data.compression
+                    
+                    if hasattr(data, 'compression_opts') and data.compression_opts is not None:
+                        data_info['compression_opts'] = data.compression_opts
+                    
+                    # Calculate compression ratio and sizes
+                    try:
+                        compressed_size = data.id.get_storage_size()
+                        if hasattr(data, "nbytes"):
+                            uncompressed_size = data.nbytes
+                        else:
+                            uncompressed_size = data.size * data.dtype.itemsize
+                        
+                        # Store raw sizes in bytes
+                        data_info['uncompressed_size_bytes'] = uncompressed_size
+                        data_info['compressed_size_bytes'] = compressed_size
+                        
+                        if compressed_size != 0:
+                            compression_ratio = uncompressed_size / compressed_size
+                            data_info['compression_ratio'] = round(compression_ratio, 2)
+                    except Exception:
+                        # Skip compression info if we can't calculate it
+                        pass
+            except ImportError:
+                # h5py not available, skip compression info
+                pass
             
             # Check if it's a link/reference
             if hasattr(data, 'file') and hasattr(data, 'name'):
@@ -270,6 +336,9 @@ class NWBJSONConverter:
                                     collection_info["children"].append(
                                         self._build_json_structure(item, item_path)
                                     )
+                            
+                            # Sort collection children alphabetically by name
+                            collection_info["children"].sort(key=lambda x: x.get("name", "").lower())
                         except Exception:
                             # If iteration fails, just add as single child
                             collection_info = self._build_json_structure(container, child_path)
@@ -335,6 +404,9 @@ class NWBJSONConverter:
                         except (AttributeError, TypeError):
                             # If iteration fails, skip this field
                             pass
+        
+        # Sort children alphabetically by name for consistent ordering
+        children.sort(key=lambda x: x.get("name", "").lower())
         
         return children
     

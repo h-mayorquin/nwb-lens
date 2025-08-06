@@ -9,6 +9,20 @@ from textual import log
 from ..structure.models import NWBObjectInfo, InspectorMessage
 
 
+def _format_bytes(num_bytes: int) -> str:
+    """Format bytes with appropriate units (KiB, MiB, GiB, TiB)."""
+    if num_bytes < 1024:
+        return f"{num_bytes} B"
+    elif num_bytes < 1024**2:
+        return f"{num_bytes / 1024:.1f} KiB"
+    elif num_bytes < 1024**3:
+        return f"{num_bytes / (1024**2):.1f} MiB"
+    elif num_bytes < 1024**4:
+        return f"{num_bytes / (1024**3):.1f} GiB"
+    else:
+        return f"{num_bytes / (1024**4):.1f} TiB"
+
+
 class NWBTree(Tree):
     """Expandable tree widget for NWB structure."""
     
@@ -71,6 +85,17 @@ class NWBTree(Tree):
                 unified_info["chunks"] = data_info["chunks"]
             if "hdf5_path" in data_info:
                 unified_info["hdf5_path"] = data_info["hdf5_path"]
+            if "compression" in data_info:
+                unified_info["compression"] = data_info["compression"]
+            if "compression_opts" in data_info:
+                unified_info["compression_opts"] = data_info["compression_opts"]
+            if "compression_ratio" in data_info:
+                unified_info["compression_ratio"] = data_info["compression_ratio"]
+            if "uncompressed_size_bytes" in data_info:
+                unified_info["original_size"] = _format_bytes(data_info["uncompressed_size_bytes"])
+            if "compressed_size_bytes" in data_info:
+                unified_info["compressed_size"] = _format_bytes(data_info["compressed_size_bytes"])
+        
         
         # Create the object with unified info
         obj_info = NWBObjectInfo(
@@ -127,7 +152,10 @@ class NWBTree(Tree):
     
     def _add_children_to_node(self, parent_node, children: list[NWBObjectInfo]) -> None:
         """Recursively add children to a tree node."""
-        for child in children:
+        # Sort children alphabetically by name
+        sorted_children = sorted(children, key=lambda x: x.name.lower())
+        
+        for child in sorted_children:
             display_name = child.get_display_name()
             
             # Check if this is a virtual/missing node
