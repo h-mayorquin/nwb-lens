@@ -60,8 +60,8 @@ class AttributePanel(Widget):
         details_text = "\n\n".join(details_sections) if details_sections else "[dim]No additional details[/dim]"
         self.query_one("#object-details", Static).update(details_text)
         
-        # Update inspector results if available
-        self._update_inspector_results(selected_object)
+        # Clear the separate inspector results section since messages are now inline
+        self.query_one("#inspector-results", Static).update("")
     
     def _update_inspector_results(self, selected_object: NWBObjectInfo) -> None:
         """Update the inspector results section for the selected object."""
@@ -224,6 +224,11 @@ class AttributePanel(Widget):
         # Build sections
         sections = []
         
+        # Add inspector messages first (between top info and data)
+        inspector_section = self._format_inspector_messages(obj_info)
+        if inspector_section:
+            sections.append(inspector_section)
+        
         if data_items:
             sections.append("[bold]Data:[/bold]\n" + "\n".join(data_items))
         
@@ -231,6 +236,54 @@ class AttributePanel(Widget):
             sections.append("[bold]Info:[/bold]\n" + "\n".join(metadata_items))
         
         return "\n\n".join(sections)
+    
+    def _format_inspector_messages(self, obj_info: NWBObjectInfo) -> str:
+        """Format inspector messages for inline display."""
+        if not obj_info.inspector_messages:
+            return ""
+        
+        # Group messages by importance
+        messages_by_importance = {}
+        for msg in obj_info.inspector_messages:
+            if msg.importance not in messages_by_importance:
+                messages_by_importance[msg.importance] = []
+            messages_by_importance[msg.importance].append(msg)
+        
+        # Build display text
+        results_sections = []
+        results_sections.append("[bold]Inspector Results:[/bold]")
+        
+        # Show in priority order
+        priority_order = ["ERROR", "PYNWB_VALIDATION", "CRITICAL", 
+                         "BEST_PRACTICE_VIOLATION", "BEST_PRACTICE_SUGGESTION"]
+        
+        for importance in priority_order:
+            if importance in messages_by_importance:
+                messages = messages_by_importance[importance]
+                text_indicator = messages[0].get_text_indicator()
+                
+                # Format importance name nicely
+                display_importance = importance.replace('_', ' ').title()
+                
+                # Color based on severity - different shades of red with more intense for worse problems
+                if importance in ["ERROR", "PYNWB_VALIDATION", "CRITICAL"]:
+                    color = "red1"  # Most intense red for critical errors
+                elif importance == "BEST_PRACTICE_VIOLATION":
+                    color = "red3"  # Medium red for violations
+                else:
+                    color = "orange_red1"  # Lighter red-orange for suggestions
+                
+                results_sections.append(f"[{color}]{text_indicator}: {display_importance}:[/{color}]")
+                for msg in messages:
+                    # Truncate long messages
+                    message_text = msg.message
+                    if len(message_text) > 100:
+                        message_text = message_text[:97] + "..."
+                    results_sections.append(f"  • {message_text}")
+                    if msg.check_function:
+                        results_sections.append(f"    [dim]Check: {msg.check_function}[/dim]")
+        
+        return "\n".join(results_sections)
     
     def _format_metadata(self, info: NWBObjectInfo) -> str:
         """Format metadata/attributes for display."""

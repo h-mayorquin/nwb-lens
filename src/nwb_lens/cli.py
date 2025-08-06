@@ -2,11 +2,15 @@
 
 import asyncio
 import tempfile
+import threading
 from pathlib import Path
 from typing import Optional
 
 import typer
 from rich.console import Console
+from textual.app import App, ComposeResult
+from textual.containers import Vertical, Center
+from textual.widgets import LoadingIndicator, Static
 
 from .app import NWBLensApp
 from .structure.extractor import NWBStructureExtractor
@@ -19,6 +23,74 @@ app = typer.Typer(
     help="Interactive terminal-based NWB file explorer for debugging and exploration",
     no_args_is_help=True,
 )
+
+
+class LoadingApp(App):
+    """Simple loading screen app."""
+    
+    def __init__(self, message: str = "Processing..."):
+        super().__init__()
+        self.message = message
+        self.title = "NWB Lens - Loading"
+        self._should_exit = False
+    
+    def compose(self) -> ComposeResult:
+        """Create the loading screen."""
+        yield Center(
+            Vertical(
+                LoadingIndicator(),
+                Static(self.message, id="loading-message"),
+                id="loading-container"
+            ),
+            id="loading-center"
+        )
+    
+    def on_mount(self) -> None:
+        """Start checking for exit condition."""
+        self.check_exit_timer()
+    
+    def check_exit_timer(self) -> None:
+        """Schedule the next exit check."""
+        if self._should_exit:
+            self.exit()
+        else:
+            self.set_timer(0.1, self.check_exit_timer)
+    
+    def request_exit(self) -> None:
+        """Request the app to exit."""
+        self._should_exit = True
+
+
+def run_with_loading_screen(process_func, message: str = "Processing NWB file..."):
+    """Run a processing function while showing a loading screen."""
+    result = None
+    exception = None
+    loading_app = LoadingApp(message)
+    
+    def process_thread():
+        nonlocal result, exception
+        try:
+            result = process_func()
+        except Exception as e:
+            exception = e
+        finally:
+            loading_app.request_exit()
+    
+    # Start processing in background thread
+    thread = threading.Thread(target=process_thread, daemon=True)
+    thread.start()
+    
+    # Run loading app (blocks until processing is done)
+    loading_app.run()
+    
+    # Wait for thread to complete
+    thread.join()
+    
+    # Re-raise any exception that occurred
+    if exception:
+        raise exception
+    
+    return result
 
 
 @app.command()
@@ -107,8 +179,25 @@ def main(
         return extractor, merger
     
     try:
-        # Run the async processing
-        extractor, merger = asyncio.run(process_file())
+        # Determine appropriate loading message
+        if inspect and inspector_json:
+            message = "Processing NWB file with validation and external inspection data..."
+        elif inspect:
+            message = "Processing NWB file and running validation..."
+        elif inspector_json:
+            message = "Processing NWB file and loading inspection data..."
+        else:
+            message = "Processing NWB file structure..."
+        
+        # For interactive mode, show loading screen during processing
+        if not output:
+            def process_data():
+                return asyncio.run(process_file())
+            
+            extractor, merger = run_with_loading_screen(process_data, message)
+        else:
+            # For non-interactive mode, just run normally with console output
+            extractor, merger = asyncio.run(process_file())
         
         if output:
             # Non-interactive mode: export to specified output file
