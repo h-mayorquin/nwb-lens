@@ -30,6 +30,9 @@ def main(
     inspector_json: Optional[Path] = typer.Option(
         None, "--inspector-json", help="Path to existing nwbinspector JSON output to merge with structure"
     ),
+    inspector_json_output: Optional[Path] = typer.Option(
+        None, "--inspector-json-output", help="Path to save nwbinspector JSON output (only when --inspect is used)"
+    ),
     output: Optional[Path] = typer.Option(
         None, "--output", "-o", help="Export structure to JSON file (non-interactive mode). When used with --inspect, validation results are included in the output"
     ),
@@ -43,10 +46,11 @@ def main(
     - Summary of issues by importance level
     
     Examples:
-        nwb-lens file.nwb                                  # Interactive TUI mode
-        nwb-lens file.nwb --inspect                        # TUI with validation
-        nwb-lens file.nwb --output structure.json          # Export structure only
-        nwb-lens file.nwb --inspect --output validated.json # Export with validation
+        nwb-lens file.nwb                                              # Interactive TUI mode
+        nwb-lens file.nwb --inspect                                    # TUI with validation
+        nwb-lens file.nwb --output structure.json                      # Export structure only
+        nwb-lens file.nwb --inspect --output validated.json            # Export with validation
+        nwb-lens file.nwb --inspect --inspector-json-output issues.json # Save inspector JSON separately
     """
     
     if not file_path.exists():
@@ -55,6 +59,11 @@ def main(
     
     if not file_path.suffix.lower() == ".nwb":
         console.print(f"[yellow]Warning: File does not have .nwb extension: {file_path}[/yellow]")
+    
+    # Validate inspector JSON output option
+    if inspector_json_output and not inspect:
+        console.print("[red]Error: --inspector-json-output requires --inspect to be enabled[/red]")
+        raise typer.Exit(1)
     
     async def process_file():
         """Process the NWB file with optional inspection."""
@@ -69,6 +78,7 @@ def main(
         merger.set_structure(extractor.get_json_structure())
         
         # Run inspection if requested
+        inspection_results = None
         if inspect:
             if not inspector or not inspector.is_available():
                 console.print(f"[yellow]Warning: nwbinspector not available, skipping validation[/yellow]")
@@ -76,6 +86,14 @@ def main(
                 console.print(f"[blue]Running nwbinspector validation...[/blue]")
                 inspection_results = await inspector.run_inspection(file_path)
                 merger.set_inspection(inspection_results)
+                
+                # Save inspector JSON if path provided
+                if inspector_json_output:
+                    console.print(f"[blue]Saving inspector results to {inspector_json_output.name}...[/blue]")
+                    with open(inspector_json_output, 'w') as f:
+                        import json
+                        json.dump(inspection_results, f, indent=2)
+                    console.print(f"[green]✓ Inspector JSON saved to {inspector_json_output}[/green]")
         
         # Load and merge external inspector JSON if provided
         if inspector_json:
